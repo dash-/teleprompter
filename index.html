@@ -293,6 +293,25 @@
   .state-badge.ready { background: var(--border); color: var(--text); }
   .state-badge.tracking { background: var(--highlight); color: #fff; }
   .state-badge.paused { background: #e9a645; color: #1a1a2e; }
+
+  /* Inline segment divider in continuous flow */
+  .segment-divider {
+    display: block;
+    margin: 28px 0 20px;
+    padding: 6px 0;
+    font-size: 13px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--highlight);
+    border-top: 1px solid var(--border);
+    opacity: 0.7;
+  }
+
+  .segment-divider:first-child {
+    margin-top: 0;
+    border-top: none;
+  }
 </style>
 </head>
 <body>
@@ -482,7 +501,7 @@ function loadScript(md) {
   $landing.style.display = 'none';
   $prompter.style.display = 'flex';
   $doneOverlay.classList.remove('visible');
-  renderSegment();
+  renderAll();
   updateStateBadge();
 }
 
@@ -523,77 +542,62 @@ document.getElementById('btn-restart').addEventListener('click', () => {
   syllableOffset = 0;
   state = 'READY';
   $doneOverlay.classList.remove('visible');
-  renderSegment();
+  updateWordHighlights();
+  updateSegmentMeta();
   updateStateBadge();
 });
 
 // ── Rendering ──
 
-function renderSegment() {
-  const seg = segments[currentSegmentIndex];
-  if (!seg) return;
-
-  // Title + progress
-  $segTitle.textContent = seg.title;
-  $segProgress.textContent = `${currentSegmentIndex + 1}/${segments.length}`;
-
-  // Dialogue words
+// Render all segments as one continuous flow (called once on load)
+function renderAll() {
   $dialoguePane.innerHTML = '';
-  seg.words.forEach((word, i) => {
-    const span = document.createElement('span');
-    span.className = 'word';
-    span.textContent = word;
-    if (i < currentWordIndex) {
-      span.classList.add('spoken');
-    } else if (i === currentWordIndex) {
-      span.classList.add('current');
-    } else {
-      span.classList.add('upcoming');
-    }
-    $dialoguePane.appendChild(span);
-    // Space between words
-    if (i < seg.words.length - 1) {
-      $dialoguePane.appendChild(document.createTextNode(' '));
+
+  segments.forEach((seg, si) => {
+    // Inline segment divider
+    const divider = document.createElement('div');
+    divider.className = 'segment-divider';
+    divider.textContent = seg.title;
+    $dialoguePane.appendChild(divider);
+
+    // Words
+    seg.words.forEach((word, wi) => {
+      const span = document.createElement('span');
+      span.className = 'word';
+      span.textContent = word;
+      span.dataset.seg = si;
+      span.dataset.word = wi;
+      $dialoguePane.appendChild(span);
+      if (wi < seg.words.length - 1) {
+        $dialoguePane.appendChild(document.createTextNode(' '));
+      }
+    });
+
+    if (seg.words.length === 0) {
+      const note = document.createElement('span');
+      note.style.cssText = 'color:var(--text-dim);font-style:italic;font-size:0.9rem';
+      note.textContent = '(no dialogue)';
+      $dialoguePane.appendChild(note);
     }
   });
 
-  // If no dialogue, show a note
-  if (seg.words.length === 0) {
-    $dialoguePane.innerHTML = '<span style="color:var(--text-dim);font-style:italic">No dialogue in this segment</span>';
-  }
-
-  // Actions
-  $actionsList.innerHTML = '';
-  seg.actions.forEach(action => {
-    const li = document.createElement('li');
-    li.textContent = action;
-    $actionsList.appendChild(li);
-  });
-
-  // Prev/next previews
-  if (currentSegmentIndex > 0) {
-    $prevPreview.innerHTML = '<span class="nav-hint">&uarr;</span> ' + segments[currentSegmentIndex - 1].title;
-  } else {
-    $prevPreview.textContent = '';
-  }
-
-  if (currentSegmentIndex < segments.length - 1) {
-    $nextPreview.innerHTML = '<span class="nav-hint">&darr;</span> ' + segments[currentSegmentIndex + 1].title;
-  } else {
-    $nextPreview.textContent = '';
-  }
-
-  scrollCurrentWordIntoView();
+  updateWordHighlights();
+  updateSegmentMeta();
 }
 
 function updateWordHighlights() {
   const wordEls = $dialoguePane.querySelectorAll('.word');
-  wordEls.forEach((el, i) => {
+  wordEls.forEach(el => {
+    const si = parseInt(el.dataset.seg);
+    const wi = parseInt(el.dataset.word);
     el.classList.remove('spoken', 'current', 'upcoming');
-    if (i < currentWordIndex) {
+
+    if (si < currentSegmentIndex) {
       el.classList.add('spoken');
-    } else if (i === currentWordIndex) {
-      el.classList.add('current');
+    } else if (si === currentSegmentIndex) {
+      if (wi < currentWordIndex) el.classList.add('spoken');
+      else if (wi === currentWordIndex) el.classList.add('current');
+      else el.classList.add('upcoming');
     } else {
       el.classList.add('upcoming');
     }
@@ -606,6 +610,30 @@ function scrollCurrentWordIntoView() {
   if (currentEl) {
     currentEl.scrollIntoView({ block: 'center', behavior: 'smooth' });
   }
+}
+
+function updateSegmentMeta() {
+  const seg = segments[currentSegmentIndex];
+  if (!seg) return;
+
+  $segTitle.textContent = seg.title;
+  $segProgress.textContent = `${currentSegmentIndex + 1}/${segments.length}`;
+
+  // Actions
+  $actionsList.innerHTML = '';
+  seg.actions.forEach(action => {
+    const li = document.createElement('li');
+    li.textContent = action;
+    $actionsList.appendChild(li);
+  });
+
+  // Prev/next previews
+  $prevPreview.innerHTML = currentSegmentIndex > 0
+    ? '<span class="nav-hint">&uarr;</span> ' + segments[currentSegmentIndex - 1].title
+    : '';
+  $nextPreview.innerHTML = currentSegmentIndex < segments.length - 1
+    ? '<span class="nav-hint">&darr;</span> ' + segments[currentSegmentIndex + 1].title
+    : '';
 }
 
 function updateStateBadge() {
@@ -638,13 +666,12 @@ function updateStateBadge() {
 
 function goToSegment(index) {
   if (index < 0 || index >= segments.length) return;
-  // Capture current raw total as the new offset so the next onresult
-  // only counts syllables spoken from this point forward
   syllableOffset += spokenSyllables;
   currentSegmentIndex = index;
   currentWordIndex = 0;
   spokenSyllables = 0;
-  renderSegment();
+  updateWordHighlights();
+  updateSegmentMeta();
 }
 
 function advanceSegment() {
@@ -736,8 +763,8 @@ function updateCursorFromSyllables() {
     updateWordHighlights();
   }
 
-  // Auto-advance at 90%
-  if (seg.totalSyllables > 0 && spokenSyllables >= seg.totalSyllables * 0.9) {
+  // Auto-advance when syllables reach 100% of segment
+  if (seg.totalSyllables > 0 && spokenSyllables >= seg.totalSyllables) {
     advanceSegment();
   }
 }
@@ -767,9 +794,10 @@ document.addEventListener('keydown', (e) => {
     case 'ArrowRight':
       e.preventDefault();
       if (seg && currentWordIndex < seg.words.length - 1) {
+        const oldSyl = spokenSyllables;
         currentWordIndex++;
-        // Also update spokenSyllables to match
         spokenSyllables = seg.cumulativeSyllables[currentWordIndex - 1] || 0;
+        syllableOffset += oldSyl - spokenSyllables;
         updateWordHighlights();
       }
       break;
@@ -777,9 +805,22 @@ document.addEventListener('keydown', (e) => {
     case 'ArrowLeft':
       e.preventDefault();
       if (currentWordIndex > 0) {
+        const oldSyl = spokenSyllables;
         currentWordIndex--;
         spokenSyllables = currentWordIndex > 0 ? seg.cumulativeSyllables[currentWordIndex - 1] : 0;
+        syllableOffset += oldSyl - spokenSyllables;
         updateWordHighlights();
+      } else if (currentSegmentIndex > 0) {
+        // Wrap to last word of previous segment
+        goToSegment(currentSegmentIndex - 1);
+        const prevSeg = segments[currentSegmentIndex];
+        if (prevSeg.words.length > 0) {
+          currentWordIndex = prevSeg.words.length - 1;
+          spokenSyllables = prevSeg.cumulativeSyllables[currentWordIndex - 1] || 0;
+          // goToSegment already rebased offset; now adjust for the word position
+          syllableOffset -= spokenSyllables;
+          updateWordHighlights();
+        }
       }
       break;
 
@@ -833,8 +874,10 @@ window.tp = {
   nextWord() {
     const seg = segments[currentSegmentIndex];
     if (seg && currentWordIndex < seg.words.length - 1) {
+      const oldSyl = spokenSyllables;
       currentWordIndex++;
       spokenSyllables = seg.cumulativeSyllables[currentWordIndex - 1] || 0;
+      syllableOffset += oldSyl - spokenSyllables;
       updateWordHighlights();
     }
     return this.snapshot();
@@ -843,9 +886,20 @@ window.tp = {
   prevWord() {
     if (currentWordIndex > 0) {
       const seg = segments[currentSegmentIndex];
+      const oldSyl = spokenSyllables;
       currentWordIndex--;
       spokenSyllables = currentWordIndex > 0 ? seg.cumulativeSyllables[currentWordIndex - 1] : 0;
+      syllableOffset += oldSyl - spokenSyllables;
       updateWordHighlights();
+    } else if (currentSegmentIndex > 0) {
+      goToSegment(currentSegmentIndex - 1);
+      const prevSeg = segments[currentSegmentIndex];
+      if (prevSeg.words.length > 0) {
+        currentWordIndex = prevSeg.words.length - 1;
+        spokenSyllables = prevSeg.cumulativeSyllables[currentWordIndex - 1] || 0;
+        syllableOffset -= spokenSyllables;
+        updateWordHighlights();
+      }
     }
     return this.snapshot();
   },
@@ -867,6 +921,7 @@ window.tp = {
         const seg = segments[currentSegmentIndex];
         currentWordIndex = Math.max(0, Math.min(wordIdx, seg.words.length - 1));
         spokenSyllables = currentWordIndex > 0 ? seg.cumulativeSyllables[currentWordIndex - 1] : 0;
+        syllableOffset -= spokenSyllables;
         updateWordHighlights();
       }
     }
@@ -899,7 +954,8 @@ window.tp = {
     syllableOffset = 0;
     state = 'READY';
     $doneOverlay.classList.remove('visible');
-    renderSegment();
+    updateWordHighlights();
+    updateSegmentMeta();
     updateStateBadge();
     return this.snapshot();
   },

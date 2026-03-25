@@ -1,0 +1,36 @@
+#!/bin/bash
+set -euo pipefail
+
+if [ $# -eq 0 ]; then
+  echo "Usage: teleprompt <script.md>"
+  exit 1
+fi
+
+SCRIPT_FILE="$1"
+
+if [ ! -f "$SCRIPT_FILE" ]; then
+  echo "Error: File not found: $SCRIPT_FILE"
+  exit 1
+fi
+
+ENCODED=$(base64 < "$SCRIPT_FILE")
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+HTML_PATH="$SCRIPT_DIR/index.html"
+
+if [ ! -f "$HTML_PATH" ]; then
+  echo "Error: index.html not found at $HTML_PATH"
+  exit 1
+fi
+
+TARGET="file://${HTML_PATH}#base64:${ENCODED}"
+
+# macOS strips hash fragments from file:// URLs in both `open` and
+# `osascript open location`. Use a temp HTML redirector instead —
+# the hash lives inside JS so it's preserved through the redirect.
+LAUNCHER="/tmp/teleprompter-launcher.html"
+cat > "$LAUNCHER" <<EOF
+<!DOCTYPE html><script>location.replace("${TARGET}");</script>
+EOF
+open "$LAUNCHER"
+(sleep 3 && rm -f "$LAUNCHER") &

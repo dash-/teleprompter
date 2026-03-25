@@ -1,0 +1,964 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Teleprompter</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #1a1a2e;
+    --surface: #16213e;
+    --border: #0f3460;
+    --text: #e6e6e6;
+    --text-dim: #555;
+    --text-spoken: #666;
+    --highlight: #e94560;
+    --highlight-glow: rgba(233, 69, 96, 0.3);
+    --action-text: #a8b2d1;
+    --cue-bg: #1c2a4a;
+  }
+
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+  }
+
+  /* ── Landing screen ── */
+  #landing {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    gap: 24px;
+    padding: 32px;
+  }
+
+  #landing h1 {
+    font-size: 2rem;
+    font-weight: 600;
+    color: var(--highlight);
+  }
+
+  #landing textarea {
+    width: 100%;
+    max-width: 700px;
+    height: 300px;
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 14px;
+    resize: vertical;
+  }
+
+  #landing textarea::placeholder { color: var(--text-dim); }
+
+  #landing .actions {
+    display: flex;
+    gap: 16px;
+    align-items: center;
+  }
+
+  .btn {
+    padding: 10px 24px;
+    border: none;
+    border-radius: 6px;
+    font-size: 15px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+
+  .btn-primary {
+    background: var(--highlight);
+    color: #fff;
+  }
+
+  .btn-primary:hover { background: #c73a52; }
+
+  .btn-secondary {
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+
+  .btn-secondary:hover { background: var(--border); }
+
+  label.btn-secondary {
+    display: inline-block;
+  }
+
+  label.btn-secondary input[type="file"] { display: none; }
+
+  .or-divider { color: var(--text-dim); font-size: 14px; }
+
+  /* ── Prompter screen ── */
+  #prompter {
+    display: none;
+    flex-direction: column;
+    height: 100%;
+  }
+
+  /* Top bar */
+  .top-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 24px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  .top-bar .segment-title {
+    font-size: 1.2rem;
+    font-weight: 600;
+  }
+
+  .top-bar .status {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 14px;
+    color: var(--action-text);
+  }
+
+  .mic-indicator {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--text-dim);
+    transition: background 0.2s;
+  }
+
+  .mic-indicator.active {
+    background: var(--highlight);
+    box-shadow: 0 0 8px var(--highlight-glow);
+    animation: pulse 1.2s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+
+  /* Main content */
+  .main-content {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  /* Dialogue pane */
+  .dialogue-pane {
+    flex: 7;
+    padding: 32px 40px;
+    overflow-y: auto;
+    line-height: 1.8;
+    font-size: 1.75rem;
+    font-weight: 400;
+  }
+
+  .dialogue-pane .word {
+    display: inline;
+    transition: color 0.15s, background 0.15s;
+  }
+
+  .dialogue-pane .word.spoken {
+    color: var(--text-spoken);
+  }
+
+  .dialogue-pane .word.current {
+    color: #fff;
+    background: var(--highlight);
+    border-radius: 3px;
+    padding: 0 4px;
+    margin: 0 -4px;
+    box-shadow: 0 0 12px var(--highlight-glow);
+  }
+
+  .dialogue-pane .word.upcoming {
+    color: var(--text);
+  }
+
+  /* Actions pane */
+  .actions-pane {
+    flex: 3;
+    padding: 32px 24px;
+    overflow-y: auto;
+    border-left: 1px solid var(--border);
+    background: var(--cue-bg);
+  }
+
+  .actions-pane h3 {
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-dim);
+    margin-bottom: 16px;
+  }
+
+  .actions-pane ul {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .actions-pane li {
+    font-size: 1rem;
+    color: var(--action-text);
+    padding-left: 20px;
+    position: relative;
+    line-height: 1.5;
+  }
+
+  .actions-pane li::before {
+    content: "\2022";
+    position: absolute;
+    left: 0;
+    color: var(--highlight);
+  }
+
+  /* Bottom bar */
+  .bottom-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 24px;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    font-size: 14px;
+    color: var(--text-dim);
+    flex-shrink: 0;
+  }
+
+  .bottom-bar span {
+    max-width: 45%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .bottom-bar .nav-hint {
+    opacity: 0.6;
+    margin: 0 4px;
+  }
+
+  /* Done screen */
+  .done-overlay {
+    display: none;
+    position: absolute;
+    inset: 0;
+    background: rgba(26, 26, 46, 0.95);
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    z-index: 10;
+  }
+
+  .done-overlay.visible {
+    display: flex;
+  }
+
+  .done-overlay h2 {
+    font-size: 2rem;
+    color: var(--highlight);
+  }
+
+  .done-overlay p {
+    font-size: 1.1rem;
+    color: var(--action-text);
+  }
+
+  /* State badge */
+  .state-badge {
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .state-badge.ready { background: var(--border); color: var(--text); }
+  .state-badge.tracking { background: var(--highlight); color: #fff; }
+  .state-badge.paused { background: #e9a645; color: #1a1a2e; }
+</style>
+</head>
+<body>
+
+<!-- Landing screen -->
+<div id="landing">
+  <h1>Teleprompter</h1>
+  <textarea id="script-input" placeholder="Paste your markdown script here..."></textarea>
+  <div class="actions">
+    <button class="btn btn-primary" id="btn-load-paste">Load Script</button>
+    <span class="or-divider">or</span>
+    <label class="btn btn-secondary">
+      Choose .md file
+      <input type="file" id="file-input" accept=".md,.markdown,.txt">
+    </label>
+  </div>
+</div>
+
+<!-- Prompter screen -->
+<div id="prompter">
+  <div class="top-bar">
+    <span class="segment-title" id="segment-title"></span>
+    <div class="status">
+      <span class="state-badge ready" id="state-badge">Ready</span>
+      <span id="segment-progress"></span>
+      <div class="mic-indicator" id="mic-indicator"></div>
+    </div>
+  </div>
+  <div class="main-content">
+    <div class="dialogue-pane" id="dialogue-pane"></div>
+    <div class="actions-pane" id="actions-pane">
+      <h3>Action Cues</h3>
+      <ul id="actions-list"></ul>
+    </div>
+  </div>
+  <div class="bottom-bar">
+    <span id="prev-preview"></span>
+    <span id="next-preview"></span>
+  </div>
+  <div class="done-overlay" id="done-overlay">
+    <h2>Done</h2>
+    <p>All segments complete.</p>
+    <button class="btn btn-primary" id="btn-restart">Restart</button>
+  </div>
+</div>
+
+<script>
+// ── UTF-8 base64 decoding ──
+
+function base64ToUtf8(base64) {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return new TextDecoder('utf-8').decode(bytes);
+}
+
+// ── Script Parsing ──
+
+function parseScript(md) {
+  const lines = md.split('\n');
+  const segments = [];
+  let current = null;
+
+  function pushCurrent() {
+    if (current) {
+      current.dialogue = current.dialogue.trim();
+      current.words = current.dialogue ? current.dialogue.split(/\s+/) : [];
+      current.syllableCounts = current.words.map(countSyllables);
+      current.cumulativeSyllables = [];
+      let sum = 0;
+      for (const c of current.syllableCounts) {
+        sum += c;
+        current.cumulativeSyllables.push(sum);
+      }
+      current.totalSyllables = sum;
+      segments.push(current);
+    }
+  }
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+
+    // Skip H1 lines (# title) — not segment boundaries
+    if (/^#\s+[^#]/.test(trimmed)) continue;
+
+    // Segment boundary: ## heading
+    if (/^##\s+/.test(trimmed)) {
+      pushCurrent();
+      current = {
+        title: trimmed.replace(/^##\s+/, ''),
+        dialogue: '',
+        actions: [],
+        words: [],
+        syllableCounts: [],
+        cumulativeSyllables: [],
+        totalSyllables: 0
+      };
+      continue;
+    }
+
+    if (!current) {
+      // Content before any heading — create an implicit "Intro" segment
+      if (trimmed && trimmed !== '---') {
+        current = {
+          title: 'Intro',
+          dialogue: '',
+          actions: [],
+          words: [],
+          syllableCounts: [],
+          cumulativeSyllables: [],
+          totalSyllables: 0
+        };
+      } else {
+        continue;
+      }
+    }
+
+    // Separator — ignore
+    if (/^---+$/.test(trimmed)) continue;
+
+    // Blockquote dialogue
+    if (/^>\s*/.test(trimmed)) {
+      let text = trimmed.replace(/^>\s*/, '');
+      // Strip surrounding quotes (ASCII + smart quotes)
+      text = text.replace(/^["\u201C\u201D]/, '').replace(/["\u201C\u201D]$/, '');
+      current.dialogue += ' ' + text;
+      continue;
+    }
+
+    // Bullet action
+    if (/^[-*]\s+/.test(trimmed)) {
+      current.actions.push(trimmed.replace(/^[-*]\s+/, ''));
+      continue;
+    }
+  }
+
+  pushCurrent();
+  return segments;
+}
+
+function countSyllables(word) {
+  word = word.toLowerCase().replace(/[^a-z]/g, '');
+  if (!word) return 1;
+  if (word.length <= 2) return 1;
+  word = word.replace(/e$/, '');
+  const vowelGroups = word.match(/[aeiouy]+/g);
+  return Math.max(1, vowelGroups ? vowelGroups.length : 1);
+}
+
+// ── State ──
+
+let segments = [];
+let currentSegmentIndex = 0;
+let currentWordIndex = 0;
+let state = 'READY'; // READY | TRACKING | PAUSED | DONE
+let spokenSyllables = 0;
+let syllableOffset = 0; // subtracted from raw recognition total on segment change
+let recognition = null;
+
+// ── DOM refs ──
+
+const $landing = document.getElementById('landing');
+const $prompter = document.getElementById('prompter');
+const $segTitle = document.getElementById('segment-title');
+const $segProgress = document.getElementById('segment-progress');
+const $dialoguePane = document.getElementById('dialogue-pane');
+const $actionsList = document.getElementById('actions-list');
+const $prevPreview = document.getElementById('prev-preview');
+const $nextPreview = document.getElementById('next-preview');
+const $micIndicator = document.getElementById('mic-indicator');
+const $stateBadge = document.getElementById('state-badge');
+const $doneOverlay = document.getElementById('done-overlay');
+const $scriptInput = document.getElementById('script-input');
+
+// ── Load script ──
+
+function loadScript(md) {
+  segments = parseScript(md);
+  if (segments.length === 0) return;
+  currentSegmentIndex = 0;
+  currentWordIndex = 0;
+  spokenSyllables = 0;
+  syllableOffset = 0;
+  state = 'READY';
+  $landing.style.display = 'none';
+  $prompter.style.display = 'flex';
+  $doneOverlay.classList.remove('visible');
+  renderSegment();
+  updateStateBadge();
+}
+
+// Check hash on load
+(function checkHash() {
+  const hash = location.hash;
+  if (hash.startsWith('#base64:')) {
+    try {
+      const encoded = hash.slice(8);
+      const md = base64ToUtf8(encoded);
+      loadScript(md);
+    } catch (e) {
+      console.error('Failed to decode base64 script:', e);
+    }
+  }
+})();
+
+// Paste button
+document.getElementById('btn-load-paste').addEventListener('click', () => {
+  const md = $scriptInput.value.trim();
+  if (md) loadScript(md);
+});
+
+// File input
+document.getElementById('file-input').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => loadScript(reader.result);
+  reader.readAsText(file);
+});
+
+// Restart
+document.getElementById('btn-restart').addEventListener('click', () => {
+  currentSegmentIndex = 0;
+  currentWordIndex = 0;
+  spokenSyllables = 0;
+  syllableOffset = 0;
+  state = 'READY';
+  $doneOverlay.classList.remove('visible');
+  renderSegment();
+  updateStateBadge();
+});
+
+// ── Rendering ──
+
+function renderSegment() {
+  const seg = segments[currentSegmentIndex];
+  if (!seg) return;
+
+  // Title + progress
+  $segTitle.textContent = seg.title;
+  $segProgress.textContent = `${currentSegmentIndex + 1}/${segments.length}`;
+
+  // Dialogue words
+  $dialoguePane.innerHTML = '';
+  seg.words.forEach((word, i) => {
+    const span = document.createElement('span');
+    span.className = 'word';
+    span.textContent = word;
+    if (i < currentWordIndex) {
+      span.classList.add('spoken');
+    } else if (i === currentWordIndex) {
+      span.classList.add('current');
+    } else {
+      span.classList.add('upcoming');
+    }
+    $dialoguePane.appendChild(span);
+    // Space between words
+    if (i < seg.words.length - 1) {
+      $dialoguePane.appendChild(document.createTextNode(' '));
+    }
+  });
+
+  // If no dialogue, show a note
+  if (seg.words.length === 0) {
+    $dialoguePane.innerHTML = '<span style="color:var(--text-dim);font-style:italic">No dialogue in this segment</span>';
+  }
+
+  // Actions
+  $actionsList.innerHTML = '';
+  seg.actions.forEach(action => {
+    const li = document.createElement('li');
+    li.textContent = action;
+    $actionsList.appendChild(li);
+  });
+
+  // Prev/next previews
+  if (currentSegmentIndex > 0) {
+    $prevPreview.innerHTML = '<span class="nav-hint">&uarr;</span> ' + segments[currentSegmentIndex - 1].title;
+  } else {
+    $prevPreview.textContent = '';
+  }
+
+  if (currentSegmentIndex < segments.length - 1) {
+    $nextPreview.innerHTML = '<span class="nav-hint">&darr;</span> ' + segments[currentSegmentIndex + 1].title;
+  } else {
+    $nextPreview.textContent = '';
+  }
+
+  scrollCurrentWordIntoView();
+}
+
+function updateWordHighlights() {
+  const wordEls = $dialoguePane.querySelectorAll('.word');
+  wordEls.forEach((el, i) => {
+    el.classList.remove('spoken', 'current', 'upcoming');
+    if (i < currentWordIndex) {
+      el.classList.add('spoken');
+    } else if (i === currentWordIndex) {
+      el.classList.add('current');
+    } else {
+      el.classList.add('upcoming');
+    }
+  });
+  scrollCurrentWordIntoView();
+}
+
+function scrollCurrentWordIntoView() {
+  const currentEl = $dialoguePane.querySelector('.word.current');
+  if (currentEl) {
+    currentEl.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }
+}
+
+function updateStateBadge() {
+  $stateBadge.className = 'state-badge';
+  switch (state) {
+    case 'READY':
+      $stateBadge.textContent = 'Ready';
+      $stateBadge.classList.add('ready');
+      $micIndicator.classList.remove('active');
+      break;
+    case 'TRACKING':
+      $stateBadge.textContent = 'Tracking';
+      $stateBadge.classList.add('tracking');
+      $micIndicator.classList.add('active');
+      break;
+    case 'PAUSED':
+      $stateBadge.textContent = 'Paused';
+      $stateBadge.classList.add('paused');
+      $micIndicator.classList.remove('active');
+      break;
+    case 'DONE':
+      $stateBadge.textContent = 'Done';
+      $stateBadge.classList.add('ready');
+      $micIndicator.classList.remove('active');
+      break;
+  }
+}
+
+// ── Segment navigation ──
+
+function goToSegment(index) {
+  if (index < 0 || index >= segments.length) return;
+  // Capture current raw total as the new offset so the next onresult
+  // only counts syllables spoken from this point forward
+  syllableOffset += spokenSyllables;
+  currentSegmentIndex = index;
+  currentWordIndex = 0;
+  spokenSyllables = 0;
+  renderSegment();
+}
+
+function advanceSegment() {
+  if (currentSegmentIndex >= segments.length - 1) {
+    state = 'DONE';
+    stopRecognition();
+    updateStateBadge();
+    $doneOverlay.classList.add('visible');
+    return;
+  }
+  goToSegment(currentSegmentIndex + 1);
+}
+
+// ── Voice tracking ──
+
+function startRecognition() {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    console.warn('Web Speech API not supported');
+    return;
+  }
+
+  recognition = new SpeechRecognition();
+  recognition.continuous = true;
+  recognition.interimResults = true;
+  recognition.lang = 'en-US';
+
+  recognition.onresult = (event) => {
+    if (state !== 'TRACKING') return;
+
+    // Count syllables from all results in this recognition session
+    let rawTotal = 0;
+    for (let i = 0; i < event.results.length; i++) {
+      const transcript = event.results[i][0].transcript.trim();
+      const words = transcript.split(/\s+/).filter(w => w);
+      for (const w of words) {
+        rawTotal += countSyllables(w);
+      }
+    }
+
+    // Subtract the offset so only syllables spoken after the last
+    // segment change count toward the current segment
+    const adjusted = rawTotal - syllableOffset;
+    if (adjusted > spokenSyllables) {
+      spokenSyllables = adjusted;
+      updateCursorFromSyllables();
+    }
+  };
+
+  recognition.onend = () => {
+    // Auto-restart if we're still tracking
+    if (state === 'TRACKING' && recognition) {
+      recognition.start();
+    }
+  };
+
+  recognition.onerror = (event) => {
+    if (event.error === 'no-speech' || event.error === 'aborted') return;
+    console.error('Speech recognition error:', event.error);
+  };
+
+  recognition.start();
+}
+
+function stopRecognition() {
+  if (recognition) {
+    const ref = recognition;
+    recognition = null;
+    try { ref.stop(); } catch (e) {}
+  }
+}
+
+function updateCursorFromSyllables() {
+  const seg = segments[currentSegmentIndex];
+  if (!seg || seg.words.length === 0) return;
+
+  // Find word index from cumulative syllables
+  let wordIndex = 0;
+  for (let i = 0; i < seg.cumulativeSyllables.length; i++) {
+    if (spokenSyllables >= seg.cumulativeSyllables[i]) {
+      wordIndex = i + 1;
+    }
+  }
+
+  wordIndex = Math.min(wordIndex, seg.words.length - 1);
+
+  if (wordIndex !== currentWordIndex) {
+    currentWordIndex = wordIndex;
+    updateWordHighlights();
+  }
+
+  // Auto-advance at 90%
+  if (seg.totalSyllables > 0 && spokenSyllables >= seg.totalSyllables * 0.9) {
+    advanceSegment();
+  }
+}
+
+// ── Keyboard controls ──
+
+document.addEventListener('keydown', (e) => {
+  // Don't capture keys when typing in textarea
+  if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT') return;
+  if ($prompter.style.display === 'none') return;
+
+  const seg = segments[currentSegmentIndex];
+
+  switch (e.code) {
+    case 'Space':
+      e.preventDefault();
+      if (state === 'READY' || state === 'PAUSED') {
+        state = 'TRACKING';
+        startRecognition();
+      } else if (state === 'TRACKING') {
+        state = 'PAUSED';
+        stopRecognition();
+      }
+      updateStateBadge();
+      break;
+
+    case 'ArrowRight':
+      e.preventDefault();
+      if (seg && currentWordIndex < seg.words.length - 1) {
+        currentWordIndex++;
+        // Also update spokenSyllables to match
+        spokenSyllables = seg.cumulativeSyllables[currentWordIndex - 1] || 0;
+        updateWordHighlights();
+      }
+      break;
+
+    case 'ArrowLeft':
+      e.preventDefault();
+      if (currentWordIndex > 0) {
+        currentWordIndex--;
+        spokenSyllables = currentWordIndex > 0 ? seg.cumulativeSyllables[currentWordIndex - 1] : 0;
+        updateWordHighlights();
+      }
+      break;
+
+    case 'ArrowDown':
+      e.preventDefault();
+      advanceSegment();
+      break;
+
+    case 'ArrowUp':
+      e.preventDefault();
+      if (currentSegmentIndex > 0) {
+        goToSegment(currentSegmentIndex - 1);
+      }
+      break;
+  }
+});
+
+// ── Debug / puppet interface ──
+
+window.tp = {
+  // Inspect state
+  get state() { return state; },
+  get segmentIndex() { return currentSegmentIndex; },
+  get wordIndex() { return currentWordIndex; },
+  get syllables() { return spokenSyllables; },
+  get segmentCount() { return segments.length; },
+
+  get segment() {
+    const s = segments[currentSegmentIndex];
+    if (!s) return null;
+    return {
+      title: s.title,
+      wordCount: s.words.length,
+      totalSyllables: s.totalSyllables,
+      words: s.words,
+      actions: s.actions
+    };
+  },
+
+  get allSegments() {
+    return segments.map((s, i) => ({
+      index: i,
+      title: s.title,
+      wordCount: s.words.length,
+      totalSyllables: s.totalSyllables,
+      actionCount: s.actions.length
+    }));
+  },
+
+  // Navigation
+  nextWord() {
+    const seg = segments[currentSegmentIndex];
+    if (seg && currentWordIndex < seg.words.length - 1) {
+      currentWordIndex++;
+      spokenSyllables = seg.cumulativeSyllables[currentWordIndex - 1] || 0;
+      updateWordHighlights();
+    }
+    return this.snapshot();
+  },
+
+  prevWord() {
+    if (currentWordIndex > 0) {
+      const seg = segments[currentSegmentIndex];
+      currentWordIndex--;
+      spokenSyllables = currentWordIndex > 0 ? seg.cumulativeSyllables[currentWordIndex - 1] : 0;
+      updateWordHighlights();
+    }
+    return this.snapshot();
+  },
+
+  nextSegment() {
+    advanceSegment();
+    return this.snapshot();
+  },
+
+  prevSegment() {
+    if (currentSegmentIndex > 0) goToSegment(currentSegmentIndex - 1);
+    return this.snapshot();
+  },
+
+  goTo(segIdx, wordIdx) {
+    if (segIdx >= 0 && segIdx < segments.length) {
+      goToSegment(segIdx);
+      if (typeof wordIdx === 'number') {
+        const seg = segments[currentSegmentIndex];
+        currentWordIndex = Math.max(0, Math.min(wordIdx, seg.words.length - 1));
+        spokenSyllables = currentWordIndex > 0 ? seg.cumulativeSyllables[currentWordIndex - 1] : 0;
+        updateWordHighlights();
+      }
+    }
+    return this.snapshot();
+  },
+
+  // State transitions
+  play() {
+    if (state === 'READY' || state === 'PAUSED') {
+      state = 'TRACKING';
+      updateStateBadge();
+    }
+    return this.snapshot();
+  },
+
+  pause() {
+    if (state === 'TRACKING') {
+      state = 'PAUSED';
+      stopRecognition();
+      updateStateBadge();
+    }
+    return this.snapshot();
+  },
+
+  reset() {
+    stopRecognition();
+    currentSegmentIndex = 0;
+    currentWordIndex = 0;
+    spokenSyllables = 0;
+    syllableOffset = 0;
+    state = 'READY';
+    $doneOverlay.classList.remove('visible');
+    renderSegment();
+    updateStateBadge();
+    return this.snapshot();
+  },
+
+  // Simulate voice input — feed spoken text as if from Web Speech API
+  speak(text) {
+    const words = text.trim().split(/\s+/).filter(w => w);
+    let addedSyllables = 0;
+    for (const w of words) addedSyllables += countSyllables(w);
+    spokenSyllables += addedSyllables;
+
+    // Auto-set state to tracking if in ready
+    if (state === 'READY') {
+      state = 'TRACKING';
+      updateStateBadge();
+    }
+
+    updateCursorFromSyllables();
+    return {
+      fed: text,
+      addedSyllables,
+      ...this.snapshot()
+    };
+  },
+
+  // Simulate speaking N syllables directly
+  addSyllables(n) {
+    spokenSyllables += n;
+    if (state === 'READY') {
+      state = 'TRACKING';
+      updateStateBadge();
+    }
+    updateCursorFromSyllables();
+    return this.snapshot();
+  },
+
+  // Load a script programmatically
+  load(md) {
+    loadScript(md);
+    return this.snapshot();
+  },
+
+  // Current state snapshot
+  snapshot() {
+    const seg = segments[currentSegmentIndex];
+    return {
+      state,
+      segmentIndex: currentSegmentIndex,
+      segmentTitle: seg?.title,
+      segmentCount: segments.length,
+      wordIndex: currentWordIndex,
+      wordCount: seg?.words?.length || 0,
+      currentWord: seg?.words?.[currentWordIndex] || null,
+      spokenSyllables,
+      totalSyllables: seg?.totalSyllables || 0,
+      pctComplete: seg?.totalSyllables ? Math.round(spokenSyllables / seg.totalSyllables * 100) : 0
+    };
+  }
+};
+</script>
+</body>
+</html>

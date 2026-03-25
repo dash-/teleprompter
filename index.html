@@ -111,23 +111,29 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 12px 24px;
+    padding: 8px 16px;
     background: var(--surface);
     border-bottom: 1px solid var(--border);
     flex-shrink: 0;
+    gap: 8px;
   }
 
   .top-bar .segment-title {
-    font-size: 1.2rem;
+    font-size: 0.9rem;
     font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
   }
 
   .top-bar .status {
     display: flex;
     align-items: center;
-    gap: 12px;
-    font-size: 14px;
+    gap: 8px;
+    font-size: 12px;
     color: var(--action-text);
+    flex-shrink: 0;
   }
 
   .mic-indicator {
@@ -149,9 +155,10 @@
     50% { opacity: 0.5; }
   }
 
-  /* Main content */
+  /* Main content — stacked vertically for narrow strip layout */
   .main-content {
     display: flex;
+    flex-direction: column;
     flex: 1;
     min-height: 0;
     overflow: hidden;
@@ -159,11 +166,11 @@
 
   /* Dialogue pane */
   .dialogue-pane {
-    flex: 7;
-    padding: 32px 40px;
+    flex: 1;
+    padding: 24px 20px;
     overflow-y: auto;
     line-height: 1.8;
-    font-size: 1.75rem;
+    font-size: 1.35rem;
     font-weight: 400;
   }
 
@@ -191,34 +198,38 @@
 
   /* Actions pane */
   .actions-pane {
-    flex: 3;
-    padding: 32px 24px;
+    flex-shrink: 0;
+    padding: 12px 20px;
     overflow-y: auto;
-    border-left: 1px solid var(--border);
+    border-top: 1px solid var(--border);
     background: var(--cue-bg);
   }
 
+  .actions-pane:empty, .actions-pane:has(ul:empty) {
+    display: none;
+  }
+
   .actions-pane h3 {
-    font-size: 13px;
+    font-size: 11px;
     text-transform: uppercase;
     letter-spacing: 1px;
     color: var(--text-dim);
-    margin-bottom: 16px;
+    margin-bottom: 8px;
   }
 
   .actions-pane ul {
     list-style: none;
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 6px;
   }
 
   .actions-pane li {
-    font-size: 1rem;
+    font-size: 0.85rem;
     color: var(--action-text);
-    padding-left: 20px;
+    padding-left: 16px;
     position: relative;
-    line-height: 1.5;
+    line-height: 1.4;
   }
 
   .actions-pane li::before {
@@ -233,10 +244,10 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 10px 24px;
+    padding: 6px 16px;
     background: var(--surface);
     border-top: 1px solid var(--border);
-    font-size: 14px;
+    font-size: 11px;
     color: var(--text-dim);
     flex-shrink: 0;
   }
@@ -297,9 +308,9 @@
   /* Inline segment divider in continuous flow */
   .segment-divider {
     display: block;
-    margin: 28px 0 20px;
-    padding: 6px 0;
-    font-size: 13px;
+    margin: 20px 0 12px;
+    padding: 4px 0;
+    font-size: 11px;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 1px;

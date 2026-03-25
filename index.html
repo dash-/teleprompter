@@ -694,6 +694,10 @@ function advanceSegment() {
   if (currentSegmentIndex >= segments.length - 1) {
     state = 'DONE';
     stopRecognition();
+    // Move cursor past the end so nothing is highlighted
+    const seg = segments[currentSegmentIndex];
+    currentWordIndex = seg ? seg.words.length : 0;
+    updateWordHighlights();
     updateStateBadge();
     $doneOverlay.classList.add('visible');
     return;
@@ -852,8 +856,24 @@ document.addEventListener('keydown', (e) => {
 
     case 'ArrowUp':
       e.preventDefault();
-      if (currentSegmentIndex > 0) {
+      if (state === 'DONE') {
+        // From Done, go to last word of current (last) segment
+        state = 'PAUSED';
+        $doneOverlay.classList.remove('visible');
+        currentWordIndex = seg.words.length - 1;
+        spokenSyllables = currentWordIndex > 0 ? seg.cumulativeSyllables[currentWordIndex - 1] : 0;
+        updateStateBadge();
+        updateWordHighlights();
+      } else if (currentSegmentIndex > 0) {
         goToSegment(currentSegmentIndex - 1);
+        // Land on last word of previous segment
+        const upSeg = segments[currentSegmentIndex];
+        if (upSeg.words.length > 0) {
+          currentWordIndex = upSeg.words.length - 1;
+          spokenSyllables = upSeg.cumulativeSyllables[currentWordIndex - 1] || 0;
+          syllableOffset -= spokenSyllables;
+          updateWordHighlights();
+        }
       }
       break;
   }

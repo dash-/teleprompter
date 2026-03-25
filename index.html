@@ -681,6 +681,11 @@ function goToSegment(index) {
   currentSegmentIndex = index;
   currentWordIndex = 0;
   spokenSyllables = 0;
+  if (state === 'DONE') {
+    state = 'PAUSED';
+    $doneOverlay.classList.remove('visible');
+    updateStateBadge();
+  }
   updateWordHighlights();
   updateSegmentMeta();
 }
@@ -816,6 +821,11 @@ document.addEventListener('keydown', (e) => {
     case 'ArrowLeft':
       e.preventDefault();
       if (currentWordIndex > 0) {
+        if (state === 'DONE') {
+          state = 'PAUSED';
+          $doneOverlay.classList.remove('visible');
+          updateStateBadge();
+        }
         const oldSyl = spokenSyllables;
         currentWordIndex--;
         spokenSyllables = currentWordIndex > 0 ? seg.cumulativeSyllables[currentWordIndex - 1] : 0;

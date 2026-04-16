@@ -994,6 +994,13 @@ document.addEventListener('keydown', (e) => {
           syllableOffset -= spokenSyllables;
           updateWordHighlights();
         }
+      } else if (currentWordIndex > 0) {
+        // First segment, not at first word — jump to beginning
+        const oldSyl = spokenSyllables;
+        currentWordIndex = 0;
+        spokenSyllables = 0;
+        syllableOffset += oldSyl;
+        updateWordHighlights();
       }
       break;
   }

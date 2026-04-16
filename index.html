@@ -236,7 +236,35 @@
     content: "\2022";
     position: absolute;
     left: 0;
+    top: 0;
     color: var(--highlight);
+  }
+
+  .actions-pane code {
+    font-family: 'SF Mono', 'Fira Code', 'Menlo', monospace;
+    background: rgba(255, 255, 255, 0.08);
+    padding: 1px 4px;
+    border-radius: 3px;
+    font-size: 0.9em;
+  }
+
+  .actions-pane pre {
+    margin-top: 6px;
+    padding: 10px 12px;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow-x: auto;
+    font-size: 0.8rem;
+    line-height: 1.5;
+  }
+
+  .actions-pane pre code {
+    font-family: 'SF Mono', 'Fira Code', 'Menlo', monospace;
+    background: transparent;
+    padding: 0;
+    color: var(--text);
+    white-space: pre;
   }
 
   /* Bottom bar */
@@ -387,6 +415,14 @@ function parseScript(md) {
   const lines = md.split('\n');
   const segments = [];
   let current = null;
+  // Track the most recent action so continuation content (fenced code
+  // blocks indented under the bullet) can be attached to it
+  let currentAction = null;
+  // Fenced code block state
+  let inCodeBlock = false;
+  let codeBlockLang = '';
+  let codeBlockIndent = 0;
+  let codeBlockLines = [];
 
   function pushCurrent() {
     if (current) {
@@ -405,6 +441,26 @@ function parseScript(md) {
   }
 
   for (const line of lines) {
+    // While inside a fenced code block, capture lines verbatim (with base
+    // indent stripped) until we see a closing fence
+    if (inCodeBlock) {
+      if (/^\s*```\s*$/.test(line)) {
+        if (currentAction) {
+          currentAction.codeBlocks.push({
+            lang: codeBlockLang,
+            code: codeBlockLines.join('\n')
+          });
+        }
+        inCodeBlock = false;
+        codeBlockLang = '';
+        codeBlockLines = [];
+        continue;
+      }
+      const stripIndent = new RegExp('^\\s{0,' + codeBlockIndent + '}');
+      codeBlockLines.push(line.replace(stripIndent, ''));
+      continue;
+    }
+
     const trimmed = line.trim();
 
     // Skip H1 lines (# title) — not segment boundaries
@@ -422,6 +478,7 @@ function parseScript(md) {
         cumulativeSyllables: [],
         totalSyllables: 0
       };
+      currentAction = null;
       continue;
     }
 
@@ -437,6 +494,7 @@ function parseScript(md) {
           cumulativeSyllables: [],
           totalSyllables: 0
         };
+        currentAction = null;
       } else {
         continue;
       }
@@ -445,24 +503,49 @@ function parseScript(md) {
     // Separator — ignore
     if (/^---+$/.test(trimmed)) continue;
 
+    // Opening fence — attach the following code block to the current action
+    const fenceOpen = line.match(/^(\s*)```(\S*)/);
+    if (fenceOpen) {
+      inCodeBlock = true;
+      codeBlockLang = fenceOpen[2] || '';
+      codeBlockIndent = fenceOpen[1].length;
+      codeBlockLines = [];
+      continue;
+    }
+
     // Blockquote dialogue
     if (/^>\s*/.test(trimmed)) {
       let text = trimmed.replace(/^>\s*/, '');
       // Strip surrounding quotes (ASCII + smart quotes)
       text = text.replace(/^["\u201C\u201D]/, '').replace(/["\u201C\u201D]$/, '');
       current.dialogue += ' ' + text;
+      currentAction = null;
       continue;
     }
 
     // Bullet action
     if (/^[-*]\s+/.test(trimmed)) {
-      current.actions.push(trimmed.replace(/^[-*]\s+/, ''));
+      const action = {
+        text: trimmed.replace(/^[-*]\s+/, ''),
+        codeBlocks: []
+      };
+      current.actions.push(action);
+      currentAction = action;
       continue;
     }
   }
 
   pushCurrent();
   return segments;
+}
+
+function renderInlineMarkdown(text) {
+  // Escape HTML, then convert `backticks` to inline <code>
+  const escaped = text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+  return escaped.replace(/`([^`]+)`/g, '<code>$1</code>');
 }
 
 function countSyllables(word) {
@@ -634,7 +717,22 @@ function updateSegmentMeta() {
   $actionsList.innerHTML = '';
   seg.actions.forEach(action => {
     const li = document.createElement('li');
-    li.textContent = action;
+
+    // Main text — render inline `backticks` as <code> chips
+    const textSpan = document.createElement('span');
+    textSpan.innerHTML = renderInlineMarkdown(action.text);
+    li.appendChild(textSpan);
+
+    // Attached fenced code blocks
+    action.codeBlocks.forEach(block => {
+      const pre = document.createElement('pre');
+      const code = document.createElement('code');
+      if (block.lang) code.className = 'language-' + block.lang;
+      code.textContent = block.code;
+      pre.appendChild(code);
+      li.appendChild(pre);
+    });
+
     $actionsList.appendChild(li);
   });
 

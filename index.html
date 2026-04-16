@@ -240,6 +240,18 @@
     color: var(--highlight);
   }
 
+  .actions-pane a {
+    color: var(--highlight);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  .actions-pane a:hover { opacity: 0.8; }
+
+  .actions-pane strong { color: var(--text); font-weight: 600; }
+
+  .actions-pane em { font-style: italic; }
+
   .actions-pane code {
     font-family: 'SF Mono', 'Fira Code', 'Menlo', monospace;
     background: rgba(255, 255, 255, 0.08);
@@ -540,12 +552,22 @@ function parseScript(md) {
 }
 
 function renderInlineMarkdown(text) {
-  // Escape HTML, then convert `backticks` to inline <code>
-  const escaped = text
+  // Escape HTML first, then apply markdown patterns
+  let html = text
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
-  return escaped.replace(/`([^`]+)`/g, '<code>$1</code>');
+  // Inline code (must run before bold/italic to avoid conflicts with * inside backticks)
+  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+  // Links: [text](url)
+  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
+  // Bold: **text** or __text__
+  html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/__([^_]+)__/g, '<strong>$1</strong>');
+  // Italic: *text* or _text_
+  html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+  html = html.replace(/\b_([^_]+)_\b/g, '<em>$1</em>');
+  return html;
 }
 
 function countSyllables(word) {
